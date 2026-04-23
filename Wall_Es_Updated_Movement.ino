@@ -1,3 +1,14 @@
+#include <Dabble.h>
+#include <SoftwareSerial.h>
+
+
+//===========================================BLUETOOTH====================================
+
+const int BT_RX = 10;
+const int BT_TX = 11;
+
+//===========================================BLUETOOTH====================================
+
 //===========================================DRIVERS====================================
 
 //Wheel 1
@@ -51,6 +62,10 @@ class moveRec
 
 void setup() {
   Serial.begin(9600);
+
+  Dabble.begin(9600, BT_RX, BT_TX);
+
+
  //Assigning the motor drivers.
   pinMode(R_PWM1, OUTPUT);
   pinMode(L_PWM1, OUTPUT);
@@ -98,61 +113,33 @@ void setup() {
 }
 
 void loop() {
- //history book
  
+
+  Dabble.processInput();
+
+  int rawY = GamePad.getYaxisData(); // Forward/Back (-7 to 7)
+  int rawX = GamePad.getXaxisData(); // Left/Right (-7 to 7)
+
   
-  
+  int speed = map(rawY, -7, 7, -255, 255);
+  int turn = map(rawX, -7, 7, -180, 180);
+
+  //BLUETOOTH CONTROLLING
+
+  if (abs(rawY) < 1 && abs(rawX) < 1) {
+    stopBrake();
+  } 
+  else {
+    advancedSteering(speed, turn);
+  }
+
+
+
+
   //cruising around
-  if(isHunting==false){
+  /* if(isHunting==false){
   Navigation();
-  }
-
-
-
-  //fake AI
-  if (Serial.available()>0){
-    char AIcommand = Serial.read();
-    /*
-    F - FORWARD // L - LEFT // R - RIGHT // T - TRASH DETECTED // C - CLEAR
-    */
-    if(AIcommand == 'T' || AIcommand == 't'){
-     Serial.println("OH MY GOD TRAAAAASSSHHHHHHH");
-     smoothBrakes();
-     isHunting = true;
-      
-    }
-  if(isHunting==true){ //aicontroll
-    
-      if(AIcommand == 'F' || AIcommand == 'f'){
-        Serial.println("Moving Forward");
-        timedForwardMovement(500);
-        logging('F', 500);
-      }
-
-      if(AIcommand == 'L' || AIcommand == 'l'){
-        Serial.println("Moving Left");
-        timedTurnLeft(500);
-        logging('L', 500);
-      }
-
-      if(AIcommand == 'R' || AIcommand == 'r'){
-        Serial.println("Moving Right");
-        timedTurnRight(500);
-        logging('R', 500);
-      }
-
-    
-      if(AIcommand == 'C' || AIcommand == 'c'){
-        Serial.println("All clear now!");
-        rewindPath();
-        isHunting = false;
-        delay(1000);
-      }
-    }
-  }
-
-
-
+  } */
   /* 
    //to print the map 
   for(int i=0; i<14; i++){
@@ -338,17 +325,32 @@ void turnRight(int speed){
   analogWrite(L_PWM2, 0); analogWrite(R_PWM2, safeSpeed);
 }
 
-void steering(int baseSpeed, int turnPoint){
+void advancedSteering(int baseSpeed, int turnFactor) {
   
-  int leftSpeed = baseSpeed + turnPoint;
-  int rightSpeed = baseSpeed - turnPoint;
+  int leftSpeed = baseSpeed + turnFactor;
+  int rightSpeed = baseSpeed - turnFactor;
 
-  leftSpeed = constrain(leftSpeed, 0, 255);
-  rightSpeed = constrain(rightSpeed, 0, 255);
+  
+  leftSpeed = constrain(leftSpeed, -255, 255);
+  rightSpeed = constrain(rightSpeed, -255, 255);
 
-  analogWrite(L_PWM1, leftSpeed); analogWrite(R_PWM1, rightSpeed);
-  analogWrite(L_PWM2, 0); analogWrite(R_PWM2, 0);
+  // Drive Left Wheels (Motor 1)
+  if (leftSpeed > 0) {
+    analogWrite(R_PWM1, leftSpeed);
+    analogWrite(L_PWM1, 0);
+  } else {
+    analogWrite(R_PWM1, 0);
+    analogWrite(L_PWM1, abs(leftSpeed));
+  }
 
+  // Drive Right Wheels (Motor 2)
+  if (rightSpeed > 0) {
+    analogWrite(R_PWM2, rightSpeed);
+    analogWrite(L_PWM2, 0);
+  } else {
+    analogWrite(R_PWM2, 0);
+    analogWrite(L_PWM2, abs(rightSpeed));
+  }
 }
 
 void stopBrake(){
@@ -368,3 +370,50 @@ void smoothBrakes(){
 
 
 /*===========================================CRUISE====================================*/
+/*
+
+  //fake AI
+   if (Serial.available()>0){
+    char AIcommand = Serial.read();
+    
+    F - FORWARD // L - LEFT // R - RIGHT // T - TRASH DETECTED // C - CLEAR
+   
+    if(AIcommand == 'T' || AIcommand == 't'){
+     Serial.println("OH MY GOD TRAAAAASSSHHHHHHH");
+     smoothBrakes();
+     isHunting = true;
+      
+    }
+  if(isHunting==true){ //aicontroll
+    
+      if(AIcommand == 'F' || AIcommand == 'f'){
+        Serial.println("Moving Forward");
+        timedForwardMovement(500);
+        logging('F', 500);
+      }
+
+      if(AIcommand == 'L' || AIcommand == 'l'){
+        Serial.println("Moving Left");
+        timedTurnLeft(500);
+        logging('L', 500);
+      }
+
+      if(AIcommand == 'R' || AIcommand == 'r'){
+        Serial.println("Moving Right");
+        timedTurnRight(500);
+        logging('R', 500);
+      }
+
+    
+      if(AIcommand == 'C' || AIcommand == 'c'){
+        Serial.println("All clear now!");
+        rewindPath();
+        isHunting = false;
+        delay(1000);
+      }
+    }
+
+  }
+  
+
+*/
