@@ -59,6 +59,8 @@ Servo leftHand;
 Servo rightArm;
 Servo rightHand;
 
+Servo neck;
+
 
 //pins for Servos
 const int LEFT_ARM_PIN = 2;
@@ -66,6 +68,8 @@ const int LEFT_HAND_PIN = 4;
 
 const int RIGHT_ARM_PIN = 7;
 const int RIGHT_HAND_PIN = 8;
+
+const int NECK_PIN = 10;
 
 //LIMITS for the servos
 
@@ -75,10 +79,14 @@ const int ARM_MAX = 45;
 const int HAND_MIN = 0;
 const int HAND_MAX = 90;
 
+const int NECK_MIN = 50;
+ const int NECK_MAX = 140;
+
 //setPositions ORIGIN
 
 int posLA = 0 ; int posLH = 0;
 int posRA = 0; int posRH = 0;
+int posN = 90;
 
 
 //===========================================SERVOS====================================
@@ -96,11 +104,13 @@ void setup() {
   leftHand.attach(LEFT_HAND_PIN);
   rightArm.attach(RIGHT_ARM_PIN);
   rightHand.attach(RIGHT_HAND_PIN);  
+  neck.attach(NECK_PIN);
 
   leftArm.write(posLA);
   leftHand.write(posLH);
   rightArm.write(posRA);
   rightHand.write(posRH); 
+  neck.write(posN);
 
 }
 
@@ -117,6 +127,7 @@ void loop() {
 
   if (abs(rawY) > 5 || abs(rawX) > 5) {
     advancedSteering(speed, turn);
+    updateNeck(speed, turn);
   } else {
     stopBrake();
   }
@@ -147,6 +158,33 @@ void updateServos(){
   rightArm.write(targetRA);
   rightHand.write(targetRH);
 
+}
+
+void updateNeck(int speed, int turn){
+
+  // if the robot doesn't move, the head will look forward
+  if(abs(speed) < 10){
+    neck.write(90);
+    posN = 90;
+    return;
+  }
+
+  // if the robot turns right or left
+  if(abs(turn) > 15){
+
+    int target = map(turn, -180, 180, NECK_MIN, NECK_MAX);
+    target = constrain(target, NECK_MIN, NECK_MAX);
+
+    // smooth movement
+    posN = posN + (target - posN) * 0.1;
+
+    neck.write(posN);
+  }
+  else{
+    // if the robot is moving forward, the head goes back to normal
+    posN = posN + (90 - posN) * 0.1;
+    neck.write(posN);
+  }
 }
 
 void advancedSteering(int baseSpeed, int turnFactor) {
@@ -267,5 +305,4 @@ void smoothBrakes(){
 
 
 /*===========================================CRUISE====================================*/
-
 
