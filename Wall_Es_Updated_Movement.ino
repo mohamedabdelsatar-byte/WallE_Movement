@@ -41,10 +41,6 @@ int BASE_SPEED = 100;
 
 //===========================================DRIVERS====================================
 
-//===========================================SERVOS====================================
-
-//===========================================SERVOS====================================
-
 //===========================================GRID_MAP====================================
 
 const int Rows = 14;
@@ -55,20 +51,37 @@ int orientation = 0;
 bool isHunting = false;
 int Map[Rows][Cols];
 
-//===========================================LOGGING====================================
+//===========================================SERVOS====================================
 
-class moveRec {
-  public: 
-    char direction;
-    unsigned long duration;
-    moveRec(char dir = 's', int time = 0) {
-      direction = dir;
-      duration = time;
-    }
-};
+Servo leftArm;
+Servo leftHand;
 
-moveRec historyLog[50];
-int currentMoveIndex = 0;
+Servo rightArm;
+Servo rightHand;
+
+
+//pins for Servos
+const int LEFT_ARM_PIN = 2;
+const int LEFT_HAND_PIN = 4;
+
+const int RIGHT_ARM_PIN = 7;
+const int RIGHT_HAND_PIN = 8;
+
+//LIMITS for the servos
+
+const int ARM_MIN = 0;
+const int ARM_MAX = 45;
+
+const int HAND_MIN = 0;
+const int HAND_MAX = 90;
+
+//setPositions ORIGIN
+
+int posLA = 0 ; int posLH = 0;
+int posRA = 0; int posRH = 0;
+
+
+//===========================================SERVOS====================================
 
 void setup() {
   RemoteXY_Init();
@@ -77,42 +90,17 @@ void setup() {
   pinMode(R_PWM1, OUTPUT); pinMode(L_PWM1, OUTPUT);
   pinMode(R_PWM2, OUTPUT); pinMode(L_PWM2, OUTPUT);
 
-  //making all values empty in the map
-  for(int i = 0; i < Rows; i++){
-    for(int j = 0; j < Cols; j++){
-      Map[i][j] = 0;
-    }
-  }
+  //servoInit
 
-  //giving variables to obstacles
-  for(int i = 0; i < 12; i++){
-    for(int j = 0; j < 3; j++){
-      Map[i][j] = 1;
-    }
-  }
+  leftArm.attach(LEFT_ARM_PIN);
+  leftHand.attach(LEFT_HAND_PIN);
+  rightArm.attach(RIGHT_ARM_PIN);
+  rightHand.attach(RIGHT_HAND_PIN);  
 
-  for(int i = 2; i < 12; i++){
-    for(int j = 7; j < 30; j++){
-      Map[i][j] = 1;
-    }
-  }
-
-  Map[2][34] = 1;
-  Map[4][34] = 1;
-  Map[9][34] = 1;
-  Map[11][34] = 1;
-  Map[12][34] = 1;
-  Map[13][34] = 1;
-  Map[2][35] = 1;
-  Map[11][35] = 1;
-  Map[12][35] = 1;
-  Map[13][35] = 1;
-  Map[2][36] = 1;
-  Map[10][36] = 1;
-  Map[11][36] = 1;
-  Map[12][36] = 1;
-  Map[13][36] = 1;
-
+  leftArm.write(posLA);
+  leftHand.write(posLH);
+  rightArm.write(posRA);
+  rightHand.write(posRH); 
 
 }
 
@@ -133,126 +121,65 @@ void loop() {
     stopBrake();
   }
 
-  //cruising around
-  /* if(isHunting==false){
-  Navigation();
-  } */
-  /* 
-   //to print the map 
-  for(int i=0; i<14; i++){
-    for(int j=0; j<37; j++)
-    {
-      Serial.print(Map[i][j]);
-      Serial.print(" ");
-    }
-    Serial.println();
-      Serial.println("---------------");
-  }
-  delay(1200000);  */
+
+  updateServos();
+  
 }
 
-/*========================================Logging====================================*/
-void logging(char dir, int time){
-  if(currentMoveIndex < 50){
-    historyLog[currentMoveIndex] = moveRec(dir, time);
-    currentMoveIndex++;
-  }
-}
+/*========================================CONTROL====================================*/
 
-void rewindPath(){
-  for (int i = currentMoveIndex - 1 ; i>=0 ; i-- ){
+void updateServos(){
+  
+  int targetLA = map(RemoteXY.ServJoy1_Y, -100, 0, ARM_MAX, ARM_MIN);
+  int targetLH = map(RemoteXY.ServJoy1_X, -100, 0, HAND_MAX, HAND_MIN);
 
-    char dir = historyLog[i].direction;
-    int time = historyLog[i].duration;
+  int targetRA = map(RemoteXY.ServJoy2_y, 0, 100, ARM_MIN, ARM_MAX);
+  int targetRH = map(RemoteXY.ServJoy2_X, 0, 100, HAND_MIN, HAND_MAX);
 
-    if(dir=='F'){
-      timedBackwardsMovement(time);
-    }
+  targetLA = constrain(targetLA, ARM_MIN, ARM_MAX);
+  targetRA = constrain(targetRA, ARM_MIN, ARM_MAX);
 
-    else if(dir=='L'){
-      timedTurnRight(time);
-    }
+  targetLH = constrain(targetLH, HAND_MIN, HAND_MAX);
+  targetRH = constrain(targetRH, HAND_MIN, HAND_MAX);
 
-    else if(dir=='R'){
-      timedTurnLeft(time);
-    }
-    delay(100);
-  }
-  currentMoveIndex = 0;
-
+  leftArm.write(targetLA);
+  leftHand.write(targetLH);
+  rightArm.write(targetRA);
+  rightHand.write(targetRH);
 
 }
-/*========================================Logging====================================*/
 
-/*===========================================CELL_CHECK====================================*/
+void advancedSteering(int baseSpeed, int turnFactor) {
+  
+  int leftSpeed = baseSpeed + turnFactor;
+  int rightSpeed = baseSpeed - turnFactor;
 
-void Navigation(){
-  int nextX, nextY;
-  getNextCell(nextX, nextY); //takes the next cell inputs
+  
+  leftSpeed = constrain(leftSpeed, -255, 255);
+  rightSpeed = constrain(rightSpeed, -255, 255);
 
-  if(cellChecker(nextX, nextY) == true){ //Checks the current Cell
-    ForwardCell(); //update to a moving by one cell
+  // Drive Left Wheels (Motor 1)
+  if (leftSpeed > 0) {
+    analogWrite(R_PWM1, leftSpeed);
+    analogWrite(L_PWM1, 0);
+  } else {
+    analogWrite(R_PWM1, 0);
+    analogWrite(L_PWM1, abs(leftSpeed));
   }
-  else{
-    turnRightCell();
+
+  // Drive Right Wheels (Motor 2)
+  if (rightSpeed > 0) {
+    analogWrite(R_PWM2, rightSpeed);
+    analogWrite(L_PWM2, 0);
+  } else {
+    analogWrite(R_PWM2, 0);
+    analogWrite(L_PWM2, abs(rightSpeed));
   }
 }
 
-
-void getNextCell(int& nextX, int& nextY){
-  nextX = currentX;
-  nextY = currentY;
-
-  if (orientation == 0) nextY--; //NORTH
-  else if (orientation == 1) nextX++; //EAST
-  else if (orientation == 2) nextY++; //SOUTH
-  else if (orientation == 3) nextX--; //WEST
-}
+/*========================================CONTROL====================================*/
 
 
-bool cellChecker(int targetX, int targetY){
-if(targetY>=Rows || targetX>=Cols || targetX < 0 || targetY < 0){
-  return false;
-}
-else if (Map[targetY][targetX]==1){
-  return false;
-}
-else{return true;};
-}
-
-
-
-/*===========================================CELL_CHECK====================================*/
-
-/*===========================================CELL_CHECK====================================*/
-
-void ForwardCell(){
-  Forward(BASE_SPEED);
-  delay(500);
-  stopBrake();
-
-  if (orientation == 0) currentY--; 
-  else if (orientation == 1) currentX++;
-  else if (orientation == 2) currentY++;
-  else if (orientation == 3) currentX--;
-}
-void turnLeftCell(){
-  turnLeft(BASE_SPEED);
-  delay(500);
-  stopBrake();
-
-  orientation = (orientation + 3) % 4;
-}
-
-void turnRightCell(){
-  turnRight(BASE_SPEED);
-  delay(500);
-  stopBrake();
-
-  orientation = (orientation + 1) % 4;
-}
-
-/*===========================================CELL_CHECK====================================*/
 
 
 
@@ -322,33 +249,6 @@ void turnRight(int speed){
   analogWrite(L_PWM2, 0); analogWrite(R_PWM2, safeSpeed);
 }
 
-void advancedSteering(int baseSpeed, int turnFactor) {
-  
-  int leftSpeed = baseSpeed + turnFactor;
-  int rightSpeed = baseSpeed - turnFactor;
-
-  
-  leftSpeed = constrain(leftSpeed, -255, 255);
-  rightSpeed = constrain(rightSpeed, -255, 255);
-
-  // Drive Left Wheels (Motor 1)
-  if (leftSpeed > 0) {
-    analogWrite(R_PWM1, leftSpeed);
-    analogWrite(L_PWM1, 0);
-  } else {
-    analogWrite(R_PWM1, 0);
-    analogWrite(L_PWM1, abs(leftSpeed));
-  }
-
-  // Drive Right Wheels (Motor 2)
-  if (rightSpeed > 0) {
-    analogWrite(R_PWM2, rightSpeed);
-    analogWrite(L_PWM2, 0);
-  } else {
-    analogWrite(R_PWM2, 0);
-    analogWrite(L_PWM2, abs(rightSpeed));
-  }
-}
 
 void stopBrake(){
   //      WHEEL 1                   WHEEL 2 
@@ -367,50 +267,5 @@ void smoothBrakes(){
 
 
 /*===========================================CRUISE====================================*/
-/*
 
-  //fake AI
-   if (Serial.available()>0){
-    char AIcommand = Serial.read();
-    
-    F - FORWARD // L - LEFT // R - RIGHT // T - TRASH DETECTED // C - CLEAR
-   
-    if(AIcommand == 'T' || AIcommand == 't'){
-     Serial.println("OH MY GOD TRAAAAASSSHHHHHHH");
-     smoothBrakes();
-     isHunting = true;
-      
-    }
-  if(isHunting==true){ //aicontroll
-    
-      if(AIcommand == 'F' || AIcommand == 'f'){
-        Serial.println("Moving Forward");
-        timedForwardMovement(500);
-        logging('F', 500);
-      }
 
-      if(AIcommand == 'L' || AIcommand == 'l'){
-        Serial.println("Moving Left");
-        timedTurnLeft(500);
-        logging('L', 500);
-      }
-
-      if(AIcommand == 'R' || AIcommand == 'r'){
-        Serial.println("Moving Right");
-        timedTurnRight(500);
-        logging('R', 500);
-      }
-
-    
-      if(AIcommand == 'C' || AIcommand == 'c'){
-        Serial.println("All clear now!");
-        rewindPath();
-        isHunting = false;
-        delay(1000);
-      }
-    }
-
-  }
-  
-
-*/
