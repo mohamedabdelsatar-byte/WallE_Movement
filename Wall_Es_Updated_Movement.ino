@@ -1,77 +1,81 @@
-#include <Dabble.h>
+#define REMOTEXY_MODE__SOFTSERIAL
 #include <SoftwareSerial.h>
+#include <RemoteXY.h>
+#include <Servo.h>
 
+// RemoteXY connection settings 
+#define REMOTEXY_SERIAL_RX 10
+#define REMOTEXY_SERIAL_TX 11
+#define REMOTEXY_SERIAL_SPEED 9600
 
-//===========================================BLUETOOTH====================================
-
-const int BT_RX = 10;
-const int BT_TX = 11;
-
-//===========================================BLUETOOTH====================================
+// RemoteXY GUI configuration  
+#pragma pack(push, 1)  
+uint8_t const PROGMEM RemoteXY_CONF_PROGMEM[] =   
+  { 255,8,0,0,0,142,0,19,0,0,0,82,111,98,111,116,32,67,111,110,
+  116,114,111,108,108,101,114,0,31,2,106,200,200,84,1,1,7,0,5,22,
+  12,60,60,15,18,43,43,0,2,26,31,5,5,120,40,40,127,5,31,31,
+  0,178,26,31,5,62,118,41,41,158,51,30,30,0,149,26,31,1,57,81,
+  24,24,92,40,17,17,0,2,31,0,10,21,82,24,24,91,12,20,20,48,
+  4,26,31,79,78,0,31,79,70,70,0,129,240,155,71,29,20,65,34,7,
+  64,17,77,111,118,101,109,101,110,116,0,129,49,90,71,29,142,37,37,12,
+  64,17,83,101,114,118,111,115,0 };
+  
+struct {
+  int8_t MoveJoy1_X; // from -100 to 100
+  int8_t MoveJoy1_Y; // from -100 to 100
+  int8_t ServJoy1_X; // from -100 to 100
+  int8_t ServJoy1_Y; // from -100 to 100
+  int8_t ServJoy2_X; // from -100 to 100
+  int8_t ServJoy2_y; // from -100 to 100
+  uint8_t button_01; // =1 if button pressed
+  uint8_t pushSwitch_01; // =1 if ON
+  uint8_t connect_flag; 
+} RemoteXY;   
+#pragma pack(pop)
 
 //===========================================DRIVERS====================================
 
-//Wheel 1
-//const int enA = 10;  // PWM pin for speed
-const int R_PWM1 = 3;  // Direction
-const int L_PWM1 = 5;  // Direction
-//Wheel 2
-//const int enB = 9; // PWM pin for speed
-const int R_PWM2 = 6; // Direction
-const int L_PWM2 = 9; // Direction
+const int R_PWM1 = 3;  const int L_PWM1 = 5; 
+const int R_PWM2 = 6;  const int L_PWM2 = 9; 
 int BASE_SPEED = 100;
 
 //===========================================DRIVERS====================================
 
-/*===========================================GRID_MAP====================================*/
+//===========================================SERVOS====================================
 
-/*defining and initializing the variables of 
-the rows and columns of the map array*/
-const int Rows =14;
+//===========================================SERVOS====================================
+
+//===========================================GRID_MAP====================================
+
+const int Rows = 14;
 const int Cols = 37;
-
-//The Current Position of Robot [VALUES ARE TEMPORARY]
-int currentX=33; //[columns LIMIT 37]
-int currentY=13; //[rows LIMIT 14]
-int orientation=0; //[0=north, 1=east, 2=south, 3=west]
-
+int currentX = 33;
+int currentY = 13;
+int orientation = 0; 
 bool isHunting = false;
-
-
-//Grid Map using 2D array
 int Map[Rows][Cols];
 
-/*===========================================GRID_MAP====================================*/
+//===========================================LOGGING====================================
 
-class moveRec
-{
-    public: 
+class moveRec {
+  public: 
     char direction;
     unsigned long duration;
-
-    moveRec(char dir = 's', int time = 0){
+    moveRec(char dir = 's', int time = 0) {
       direction = dir;
       duration = time;
     }
 };
 
-  moveRec historyLog[50];
-  int currentMoveIndex=0;
-
-
+moveRec historyLog[50];
+int currentMoveIndex = 0;
 
 void setup() {
+  RemoteXY_Init();
   Serial.begin(9600);
 
-  Dabble.begin(9600, BT_RX, BT_TX);
-
-
- //Assigning the motor drivers.
-  pinMode(R_PWM1, OUTPUT);
-  pinMode(L_PWM1, OUTPUT);
-  pinMode(R_PWM2, OUTPUT);
-  pinMode(L_PWM2, OUTPUT);
-
+  pinMode(R_PWM1, OUTPUT); pinMode(L_PWM1, OUTPUT);
+  pinMode(R_PWM2, OUTPUT); pinMode(L_PWM2, OUTPUT);
 
   //making all values empty in the map
   for(int i = 0; i < Rows; i++){
@@ -113,28 +117,21 @@ void setup() {
 }
 
 void loop() {
- 
+  RemoteXY_Handler(); // Handle communication with the app
 
-  Dabble.processInput();
+  // RemoteXY joysticks range from -100 to 100
+  int rawX = RemoteXY.MoveJoy1_X;
+  int rawY = RemoteXY.MoveJoy1_Y;
 
-  int rawY = GamePad.getYaxisData(); // Forward/Back (-7 to 7)
-  int rawX = GamePad.getXaxisData(); // Left/Right (-7 to 7)
+  // Mapping from (-100, 100) to (-255, 255) for PWM
+  int speed = map(rawY, -100, 100, -255, 255);
+  int turn = map(rawX, -100, 100, -180, 180);
 
-  
-  int speed = map(rawY, -7, 7, -255, 255);
-  int turn = map(rawX, -7, 7, -180, 180);
-
-  //BLUETOOTH CONTROLLING
-
-  if (abs(rawY) < 1 && abs(rawX) < 1) {
-    stopBrake();
-  } 
-  else {
+  if (abs(rawY) > 5 || abs(rawX) > 5) {
     advancedSteering(speed, turn);
+  } else {
+    stopBrake();
   }
-
-
-
 
   //cruising around
   /* if(isHunting==false){
