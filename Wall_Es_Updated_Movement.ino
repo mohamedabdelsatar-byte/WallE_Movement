@@ -1,7 +1,23 @@
 #define REMOTEXY_MODE__SOFTSERIAL
 #include <SoftwareSerial.h>
 #include <RemoteXY.h>
-#include <Servo.h>
+#include <Wire.h>
+#include <Adafruit_PWMServoDriver.h>
+
+// Initialize PCA9685 (Default I2C address is 0x40)
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
+
+// PCA9685 Pulse constants
+#define SERVOMIN  150 // Minimum pulse length count (0 degrees)
+#define SERVOMAX  600 // Maximum pulse length count (180 degrees)
+#define SERVO_FREQ 50 // Analog servos run at 50Hz
+
+// Define PCA9685 Channels (0-15) instead of Arduino Pins
+#define CH_LEFT_ARM   0
+#define CH_LEFT_HAND  1
+#define CH_RIGHT_ARM  2
+#define CH_RIGHT_HAND 3
+#define CH_NECK       4
 
 // RemoteXY connection settings 
 #define REMOTEXY_SERIAL_RX 10
@@ -39,8 +55,6 @@ const int R_PWM1 = 3;  const int L_PWM1 = 5;
 const int R_PWM2 = 6;  const int L_PWM2 = 9; 
 int BASE_SPEED = 100;
 
-//===========================================DRIVERS====================================
-
 //===========================================GRID_MAP====================================
 
 const int Rows = 14;
@@ -53,26 +67,7 @@ int Map[Rows][Cols];
 
 //===========================================SERVOS====================================
 
-Servo leftArm;
-Servo leftHand;
-
-Servo rightArm;
-Servo rightHand;
-
-Servo neck;
-
-
-//pins for Servos
-const int LEFT_ARM_PIN = 2;
-const int LEFT_HAND_PIN = 4;
-
-const int RIGHT_ARM_PIN = 7;
-const int RIGHT_HAND_PIN = 8;
-
-const int NECK_PIN = 10;
-
 //LIMITS for the servos
-
 const int ARM_MIN = 0;
 const int ARM_MAX = 45;
 
@@ -80,39 +75,45 @@ const int HAND_MIN = 0;
 const int HAND_MAX = 90;
 
 const int NECK_MIN = 50;
- const int NECK_MAX = 140;
+const int NECK_MAX = 140;
 
 //setPositions ORIGIN
-
-int posLA = 0 ; int posLH = 0;
-int posRA = 0; int posRH = 0;
+int posLA = 0; 
+int posLH = 0;
+int posRA = 0; 
+int posRH = 0;
 int posN = 90;
 
+// Helper function to map degrees (0-180) to PCA9685 pulse length
+void setServoAngle(uint8_t channel, int angle) {
+  int pulse = map(angle, 0, 180, SERVOMIN, SERVOMAX);
+  pwm.setPWM(channel, 0, pulse);
+}
 
-//===========================================SERVOS====================================
+//===========================================SETUP====================================
 
 void setup() {
   RemoteXY_Init();
   Serial.begin(9600);
 
+  // Initialize Motor Pins
   pinMode(R_PWM1, OUTPUT); pinMode(L_PWM1, OUTPUT);
   pinMode(R_PWM2, OUTPUT); pinMode(L_PWM2, OUTPUT);
 
-  //servoInit
+  // Initialize PCA9685
+  pwm.begin();
+  pwm.setOscillatorFrequency(27000000);
+  pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates
 
-  leftArm.attach(LEFT_ARM_PIN);
-  leftHand.attach(LEFT_HAND_PIN);
-  rightArm.attach(RIGHT_ARM_PIN);
-  rightHand.attach(RIGHT_HAND_PIN);  
-  neck.attach(NECK_PIN);
-
-  leftArm.write(posLA);
-  leftHand.write(posLH);
-  rightArm.write(posRA);
-  rightHand.write(posRH); 
-  neck.write(posN);
-
+  // Set servos to original starting positions
+  setServoAngle(CH_LEFT_ARM, posLA);
+  setServoAngle(CH_LEFT_HAND, posLH);
+  setServoAngle(CH_RIGHT_ARM, posRA);
+  setServoAngle(CH_RIGHT_HAND, posRH); 
+  setServoAngle(CH_NECK, posN);
 }
+
+//===========================================LOOP====================================
 
 void loop() {
   RemoteXY_Handler(); // Handle communication with the app
@@ -132,9 +133,7 @@ void loop() {
     stopBrake();
   }
 
-
   updateServos();
-  
 }
 
 /*========================================CONTROL====================================*/
@@ -153,18 +152,17 @@ void updateServos(){
   targetLH = constrain(targetLH, HAND_MIN, HAND_MAX);
   targetRH = constrain(targetRH, HAND_MIN, HAND_MAX);
 
-  leftArm.write(targetLA);
-  leftHand.write(targetLH);
-  rightArm.write(targetRA);
-  rightHand.write(targetRH);
-
+  setServoAngle(CH_LEFT_ARM, targetLA);
+  setServoAngle(CH_LEFT_HAND, targetLH);
+  setServoAngle(CH_RIGHT_ARM, targetRA);
+  setServoAngle(CH_RIGHT_HAND, targetRH);
 }
 
 void updateNeck(int speed, int turn){
 
   // if the robot doesn't move, the head will look forward
   if(abs(speed) < 10){
-    neck.write(90);
+    setServoAngle(CH_NECK, 90);
     posN = 90;
     return;
   }
@@ -178,12 +176,12 @@ void updateNeck(int speed, int turn){
     // smooth movement
     posN = posN + (target - posN) * 0.1;
 
-    neck.write(posN);
+    setServoAngle(CH_NECK, posN);
   }
   else{
     // if the robot is moving forward, the head goes back to normal
     posN = posN + (90 - posN) * 0.1;
-    neck.write(posN);
+    setServoAngle(CH_NECK, posN);
   }
 }
 
@@ -192,7 +190,6 @@ void advancedSteering(int baseSpeed, int turnFactor) {
   int leftSpeed = baseSpeed + turnFactor;
   int rightSpeed = baseSpeed - turnFactor;
 
-  
   leftSpeed = constrain(leftSpeed, -255, 255);
   rightSpeed = constrain(rightSpeed, -255, 255);
 
@@ -214,12 +211,6 @@ void advancedSteering(int baseSpeed, int turnFactor) {
     analogWrite(L_PWM2, abs(rightSpeed));
   }
 }
-
-/*========================================CONTROL====================================*/
-
-
-
-
 
 /*===========================================HUNT====================================*/
 
@@ -249,16 +240,11 @@ void timedTurnRight(int time){
   stopBrake();
 }
 
-
-
-/*===========================================HUNT====================================*/
-
 /*========================================CRUISE====================================*/
 
 void Forward(int speed){
   int safeSpeed = constrain(speed, 0, 255);
   //      WHEEL 1                   WHEEL 2
-  
   
   analogWrite(R_PWM1, safeSpeed); analogWrite(R_PWM2, safeSpeed);
   analogWrite(L_PWM1, 0); analogWrite(L_PWM2, 0);
@@ -302,7 +288,4 @@ void smoothBrakes(){
   stopBrake();
 
 }
-
-
 /*===========================================CRUISE====================================*/
-
