@@ -27,24 +27,24 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 // RemoteXY GUI configuration  
 #pragma pack(push, 1)  
 uint8_t const PROGMEM RemoteXY_CONF_PROGMEM[] =   
-  { 255,8,0,0,0,142,0,19,0,0,0,82,111,98,111,116,32,67,111,110,
-  116,114,111,108,108,101,114,0,31,2,106,200,200,84,1,1,7,0,5,22,
-  12,60,60,15,18,43,43,0,2,26,31,5,5,120,40,40,127,5,31,31,
-  0,178,26,31,5,62,118,41,41,158,51,30,30,0,149,26,31,1,57,81,
-  24,24,92,40,17,17,0,2,31,0,10,21,82,24,24,91,12,20,20,48,
-  4,26,31,79,78,0,31,79,70,70,0,129,240,155,71,29,20,65,34,7,
-  64,17,77,111,118,101,109,101,110,116,0,129,49,90,71,29,142,37,37,12,
-  64,17,83,101,114,118,111,115,0 };
+  { 255,6,0,0,0,175,0,19,0,0,0,82,111,98,111,116,32,67,111,110,
+  116,114,111,108,108,101,114,0,31,2,106,200,200,84,1,1,9,0,5,22,
+  12,60,60,15,18,43,43,0,2,26,31,1,57,81,24,24,92,40,17,17,
+  0,2,31,0,10,21,82,24,24,91,12,20,20,48,4,26,31,79,78,0,
+  31,79,70,70,0,129,240,155,71,29,20,65,34,7,64,17,77,111,118,101,
+  109,101,110,116,0,129,49,90,71,29,151,30,25,8,64,17,83,101,114,118,
+  111,115,0,4,78,50,7,86,135,3,19,74,0,162,26,4,79,12,10,176,
+  174,3,19,74,0,205,26,129,43,5,71,29,135,6,24,5,64,17,85,80,
+  47,68,79,87,78,0,129,51,19,56,12,178,5,11,5,64,17,83,73,68,
+  69,0 };
   
 struct {
   int8_t MoveJoy1_X; // from -100 to 100
   int8_t MoveJoy1_Y; // from -100 to 100
-  int8_t ServJoy1_X; // from -100 to 100
-  int8_t ServJoy1_Y; // from -100 to 100
-  int8_t ServJoy2_X; // from -100 to 100
-  int8_t ServJoy2_y; // from -100 to 100
-  uint8_t button_01; // =1 if button pressed
-  uint8_t pushSwitch_01; // =1 if ON
+  uint8_t button_01; // =1 if button pressed, else =0, from 0 to 1
+  uint8_t pushSwitch_01; // =1 if state is ON, else =0, from 0 to 1
+  int8_t slider_01; // from 0 to 100
+  int8_t slider_02; // from 0 to 100
   uint8_t connect_flag; 
 } RemoteXY;   
 #pragma pack(pop)
@@ -53,7 +53,7 @@ struct {
 
 const int R_PWM1 = 3;  const int L_PWM1 = 5; 
 const int R_PWM2 = 6;  const int L_PWM2 = 9; 
-int BASE_SPEED = 100;
+int BASE_SPEED = 160;
 
 //===========================================GRID_MAP====================================
 
@@ -68,8 +68,8 @@ int Map[Rows][Cols];
 //===========================================SERVOS====================================
 
 //LIMITS for the servos
-const int ARM_MIN = 0;
-const int ARM_MAX = 45;
+const int ARM_MIN = 55;
+const int ARM_MAX = 160;
 
 const int HAND_MIN = 0;
 const int HAND_MAX = 90;
@@ -77,11 +77,12 @@ const int HAND_MAX = 90;
 const int NECK_MIN = 50;
 const int NECK_MAX = 140;
 
-//setPositions ORIGIN
-int posLA = 0; 
-int posLH = 0;
-int posRA = 0; 
-int posRH = 0;
+// SAFE STARTING POSITIONS
+// Changed from 0 to prevent the servos from violently snapping on startup
+int posLA = ARM_MIN; 
+int posRA = ARM_MAX; 
+int posLH = HAND_MIN;
+int posRH = HAND_MAX;
 int posN = 90;
 
 // Helper function to map degrees (0-180) to PCA9685 pulse length
@@ -105,7 +106,7 @@ void setup() {
   pwm.setOscillatorFrequency(27000000);
   pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates
 
-  // Set servos to original starting positions
+  // Set servos to original starting positions safely
   setServoAngle(CH_LEFT_ARM, posLA);
   setServoAngle(CH_LEFT_HAND, posLH);
   setServoAngle(CH_RIGHT_ARM, posRA);
@@ -140,11 +141,14 @@ void loop() {
 
 void updateServos(){
   
-  int targetLA = map(RemoteXY.ServJoy1_Y, -100, 0, ARM_MAX, ARM_MIN);
-  int targetLH = map(RemoteXY.ServJoy1_X, -100, 0, HAND_MAX, HAND_MIN);
+  // Slider 1 (0 to 100) controls BOTH arms vertically. 
+  // If moving the slider up makes the arms go down, swap the words ARM_MIN and ARM_MAX below.
+  int targetLA = map(RemoteXY.slider_01, 0, 100, ARM_MIN, ARM_MAX);
+  int targetRA = map(RemoteXY.slider_01, 0, 100, ARM_MAX, ARM_MIN);
 
-  int targetRA = map(RemoteXY.ServJoy2_y, 0, 100, ARM_MIN, ARM_MAX);
-  int targetRH = map(RemoteXY.ServJoy2_X, 0, 100, HAND_MIN, HAND_MAX);
+  // Slider 2 (0 to 100) controls BOTH hands sideways (trash collection).
+  int targetLH = map(RemoteXY.slider_02, 0, 100, HAND_MIN, HAND_MAX);
+  int targetRH = map(RemoteXY.slider_02, 0, 100, HAND_MAX, HAND_MIN);
 
   targetLA = constrain(targetLA, ARM_MIN, ARM_MAX);
   targetRA = constrain(targetRA, ARM_MIN, ARM_MAX);
@@ -153,8 +157,8 @@ void updateServos(){
   targetRH = constrain(targetRH, HAND_MIN, HAND_MAX);
 
   setServoAngle(CH_LEFT_ARM, targetLA);
-  setServoAngle(CH_LEFT_HAND, targetLH);
   setServoAngle(CH_RIGHT_ARM, targetRA);
+  setServoAngle(CH_LEFT_HAND, targetLH);
   setServoAngle(CH_RIGHT_HAND, targetRH);
 }
 
